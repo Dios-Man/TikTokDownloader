@@ -30,6 +30,7 @@ from ..models import (
     Settings,
     ShortUrl,
     UrlResponse,
+    UserProfile,
     UserSearch,
     VideoSearch,
 )
@@ -189,6 +190,27 @@ class APIServer(TikTok):
                 url=None,
                 params=extract.model_dump(),
             )
+
+        @self.server.post(
+            "/douyin/user",
+            summary=_("获取账号用户资料"),
+            description=_(
+                dedent("""
+                **参数**:
+
+                - **cookie**: 抖音 Cookie；可选参数
+                - **proxy**: 代理；可选参数
+                - **source**: 是否返回原始响应数据；可选参数，默认值：False
+                - **sec_user_id**: 抖音账号 sec_uid；必需参数
+                """)
+            ),
+            tags=[_("抖音")],
+            response_model=DataResponse,
+        )
+        async def handle_user_profile(
+            extract: UserProfile, token: str = Depends(token_dependency)
+        ):
+            return await self.handle_user(extract)
 
         @self.server.post(
             "/douyin/detail",
@@ -735,6 +757,21 @@ class APIServer(TikTok):
         sec_user_id: str = None,
     ) -> bool:
         return bool(web_rid or room_id and sec_user_id)
+
+    async def handle_user(self, extract: UserProfile):
+        data = await self._get_user_data(
+            extract.sec_user_id,
+            extract.cookie,
+            extract.proxy,
+        )
+        if not data:
+            return self.failed_response(extract)
+        if extract.source:
+            return self.success_response(extract, data)
+        result = await self._deal_user_data([data], source=False)
+        if result:
+            return self.success_response(extract, result[0] if len(result) == 1 else result)
+        return self.failed_response(extract)
 
     async def handle_live(self, extract: Live | LiveTikTok, tiktok=False):
         if tiktok:
